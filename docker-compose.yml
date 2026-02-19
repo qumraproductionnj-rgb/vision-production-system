@@ -1,0 +1,52 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vps-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vision_production}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vision_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: vps-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/vision_production?schema=public}
+      PORT: ${BACKEND_PORT:-4000}
+    ports:
+      - "4000:4000"
+    command: sh -c "npm run prisma:generate && npm run prisma:migrate:deploy && npm run start:dev"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: vps-frontend
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env
+    environment:
+      PORT: ${FRONTEND_PORT:-3000}
+    ports:
+      - "3000:3000"
+    command: npm run dev
+
+volumes:
+  postgres_data:
